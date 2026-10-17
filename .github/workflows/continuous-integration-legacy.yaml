@@ -1,0 +1,52 @@
+name: Continuous Integration (Legacy)
+
+on:
+  workflow_dispatch:
+jobs:
+  build-then-run-tests:
+    name: Tests [${{ matrix.expander_leg }}]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - modules:
+            name: Core
+            values: 
+              :gaffer2,:core,:access,:cache,:common-util,:data,:exception,:graph,:operation,:serialisation,:store,:type
+          os: macos-latest
+          arch: arm64
+          runner: macos-latest
+          expander_leg: macos-latest--arm64
+    env:
+      MAVEN_OPTS: -Dmaven.wagon.http.retryHandler.count=3 
+        -Dmaven.wagon.httpconnectionManager.ttlSeconds=25
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup JDK
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'zulu'
+        java-version: '8'
+          # Zulu JDK 8 has no native Windows arm64 build; use the x64 build, which runs under Windows 11 Arm's x64 emulation
+        architecture: ${{ (matrix.os == 'windows-latest' && matrix.arch == 
+          'arm64') && 'x64' || '' }}
+
+    - name: Cache dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.m2/repository
+          !~/.m2/repository/uk
+        key: ${{matrix.modules.name}}-gaffer-dependencies
+        restore-keys: ${{matrix.modules.name}}
+
+    - name: Install
+      run: mvn -B -ntp clean install -P quick -Dlegacy=true -pl 
+        ${{matrix.modules.values}} -am
+
+    - name: Test
+      run: mvn -B -ntp verify -P coverage -Dlegacy=true -pl 
+        ${{matrix.modules.values}}
+    timeout-minutes: 150
